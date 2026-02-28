@@ -1,0 +1,117 @@
+# config.yaml
+# Master configuration for Explainable Multi-Modal Clinical AI
+# Target hardware: Apple MacBook M4, 16GB unified RAM
+# All paths are relative to the project root unless otherwise noted.
+
+# ──────────────────────────────────────────────
+# Paths
+# ──────────────────────────────────────────────
+paths:
+  data_dir: "data"
+  raw_dir: "data/raw"
+  manifest: "data/manifest.csv"
+  splits: "data/splits.json"
+  reports_dir: "data/raw/reports"           # MIMIC-CXR report .txt files
+  images_dir: "data/raw/files"              # MIMIC-CXR-JPG image files
+  chexpert_labels: "data/raw/mimic-cxr-2.0.0-chexpert.csv"
+  split_csv: "data/raw/mimic-cxr-2.0.0-split.csv"
+  metadata_csv: "data/raw/mimic-cxr-2.0.0-metadata.csv"
+  teacher_soft_labels: "data/teacher_soft_labels.npy"
+  teacher_study_ids: "data/teacher_study_ids.json"
+  outputs_dir: "outputs"
+
+# ──────────────────────────────────────────────
+# Dataset
+# ──────────────────────────────────────────────
+dataset:
+  n_studies: 15000                # Working subset size (10k–20k)
+  split_ratios: [0.70, 0.10, 0.20]  # train / val / test
+  seed: 42
+  num_classes: 14
+  label_classes:
+    - Atelectasis
+    - Cardiomegaly
+    - Consolidation
+    - Edema
+    - Enlarged Cardiomediastinum
+    - Fracture
+    - Lung Lesion
+    - Lung Opacity
+    - No Finding
+    - Pleural Effusion
+    - Pleural Other
+    - Pneumonia
+    - Pneumothorax
+    - Support Devices
+  uncertain_policy: "u_zeros"     # treat -1 as 0
+  image_size: 224
+
+# ──────────────────────────────────────────────
+# CNN Baseline
+# ──────────────────────────────────────────────
+cnn:
+  architecture: "resnet18"        # or "efficientnet_b0"
+  pretrained: true
+  num_classes: 14
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  batch_size: 32
+  epochs: 30
+  early_stopping_patience: 5
+  scheduler: "cosine"
+  grad_cam_layer: "layer4"        # target layer for Grad-CAM
+
+# ──────────────────────────────────────────────
+# LoRA Teacher (LFM2.5-VL-1.6B)
+# ──────────────────────────────────────────────
+lora:
+  base_model: "LiquidAI/LFM2.5-VL-1.6B"
+  rank: 8
+  alpha: 16                       # = 2 × rank
+  dropout: 0.05
+  target_modules: ["q_proj", "v_proj"]
+  bias: "none"
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  batch_size: 1
+  gradient_accumulation_steps: 16 # effective batch = 16
+  max_length: 512                 # token max length for reports
+  image_size: 336                 # max VLM input resolution
+  # Phase 1: text-only
+  phase1_max_steps: 2000
+  phase1_epochs: 3
+  # Phase 2: image + text
+  phase2_max_steps: 3000
+  phase2_epochs: 2
+  fp16: true                      # use float16 where MPS supports it
+
+# ──────────────────────────────────────────────
+# Knowledge Distillation
+# ──────────────────────────────────────────────
+distillation:
+  temperature: 4.0
+  alpha: 0.5                      # weight on hard loss
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  batch_size: 32
+  epochs: 30
+  early_stopping_patience: 5
+  scheduler: "cosine"
+
+# ──────────────────────────────────────────────
+# Evaluation
+# ──────────────────────────────────────────────
+evaluation:
+  n_bootstrap: 1000               # iterations for AUC confidence intervals
+  ece_bins: 10
+  inference_latency_samples: 100  # forward passes for latency measurement
+  threshold: 0.5                  # for F1 / sensitivity / specificity
+  grad_cam_n_samples: 50          # cases to visualize
+  compare_grad_cam_n: 20          # CNN vs student comparison samples
+
+# ──────────────────────────────────────────────
+# Streamlit Demo
+# ──────────────────────────────────────────────
+demo:
+  student_checkpoint: "outputs/distillation/best_student.pt"
+  top_k_predictions: 5
