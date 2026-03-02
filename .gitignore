@@ -218,7 +218,7 @@ build/
 .venv/
 venv/
 env/
-med/
+medi/
 
 # Data (never commit MIMIC-CXR data)
 data/raw/
